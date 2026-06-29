@@ -1,0 +1,47 @@
+package com.Aura.filter;
+
+import com.Aura.utils.JwtUtil;
+import io.jsonwebtoken.Claims;
+import org.springframework.cloud.gateway.filter.GatewayFilterChain;
+import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.core.Ordered;
+import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.stereotype.Component;
+import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
+
+@Component
+public class AuthGlobalFilter implements GlobalFilter, Ordered {
+
+    @Override
+    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+        ServerHttpRequest request = exchange.getRequest();
+
+        String token = request.getHeaders().getFirst("token");
+
+        if (token == null || token.isEmpty()) {
+            return chain.filter(exchange);
+        }
+
+        try {
+            Claims claims = JwtUtil.parseToken(token);
+            Long userId = claims.get("userId", Long.class);
+
+            ServerHttpRequest mutatedRequest = request.mutate()
+                    .header("userId", String.valueOf(userId))
+                    .build();
+
+            ServerWebExchange mutatedExchange = exchange.mutate().request(mutatedRequest).build();
+            
+            return chain.filter(mutatedExchange);
+
+        } catch (Exception e) {
+            return chain.filter(exchange);
+        }
+    }
+
+    @Override
+    public int getOrder() {
+        return 0;
+    }
+}

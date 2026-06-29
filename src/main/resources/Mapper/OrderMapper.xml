@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aura.hotel.Mapper.OrderMapper">
+
+    <select id="findOneAvailableRoom" resultType="com.aura.hotel.entity.Room">
+        SELECT * FROM room
+        WHERE hotel_id = #{hotelId}
+          AND type_name = #{typeName}
+          AND status = 1
+          AND id NOT IN (
+            SELECT room_id FROM hotel_order
+            WHERE status IN (1, 2) -- 正在预约或已入住的均视为占用
+              AND NOT (start_date >= #{endDate} OR end_date &lt;= #{startDate})
+        )
+            LIMIT 1
+    </select>
+
+    <insert id="insertOrder" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO hotel_order (
+            order_no, user_id, hotel_id, room_id, start_date, end_date, total_amount, status
+        ) VALUES (
+                     #{orderNo}, #{userId}, #{hotelId}, #{roomId}, #{startDate}, #{endDate}, #{totalAmount}, #{status}
+                 )
+    </insert>
+
+    <select id="selectByUserId" resultType="com.aura.hotel.entity.HotelOrder">
+        SELECT * FROM hotel_order
+        WHERE user_id = #{userId}
+        ORDER BY create_time DESC
+    </select>
+
+    <update id="updateStatus">
+        UPDATE hotel_order
+        SET status = #{status}
+        WHERE id = #{id}
+    </update>
+</mapper>

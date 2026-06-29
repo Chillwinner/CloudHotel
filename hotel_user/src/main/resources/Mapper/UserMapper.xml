@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.Aura.Mapper.UserMapper">
+
+    <select id="selectByPhone" resultType="com.Aura.entity.User">
+        SELECT * FROM user WHERE phone = #{phone}
+    </select>
+
+    <select id="selectByEmail" resultType="com.Aura.entity.User">
+        SELECT * FROM user WHERE email = #{email}
+    </select>
+
+    <select id="selectById" resultType="com.Aura.entity.User">
+        SELECT id, phone, email, nickname, avatar, create_time FROM user WHERE id = #{id}
+    </select>
+
+    <insert id="insertUser" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user (phone, password, email, nickname, avatar)
+        VALUES (#{phone}, #{password}, #{email}, #{nickname}, #{avatar})
+    </insert>
+
+    <update id="updateById">
+        UPDATE user
+        <set>
+            <if test="nickname != null">nickname = #{nickname},</if>
+            <if test="avatar != null">avatar = #{avatar},</if>
+            <if test="password != null">password = #{password},</if>
+            <if test="phone != null">phone = #{phone},</if>
+            <if test="email != null">email = #{email},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectUserList" resultType="com.Aura.entity.User">
+        SELECT id, phone, email, nickname, avatar, status, create_time
+        FROM user
+        <where>
+            <if test="keyword != null and keyword != ''">
+                AND (phone LIKE CONCAT('%', #{keyword}, '%') OR nickname LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <update id="updateUserStatus">
+        UPDATE user
+        SET status = #{status}
+        WHERE id = #{id}
+    </update>
+
+</mapper>

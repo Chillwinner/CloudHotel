@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.Aura.Mapper.OrderMapper">
+
+
+
+    <insert id="insertOrder" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO hotel_order (
+            order_no, user_id, hotel_id, room_id, start_date, end_date, total_amount, status
+        ) VALUES (
+                     #{orderNo}, #{userId}, #{hotelId}, #{roomId}, #{startDate}, #{endDate}, #{totalAmount}, #{status}
+                 )
+    </insert>
+
+    <select id="selectByUserId" resultType="com.Aura.entity.HotelOrder">
+        SELECT * FROM hotel_order
+        WHERE user_id = #{userId}
+        ORDER BY create_time DESC
+    </select>
+
+    <update id="updateStatus">
+        UPDATE hotel_order
+        SET status = #{status}
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectById" resultType="com.Aura.entity.HotelOrder">
+        SELECT * FROM hotel_order WHERE id = #{id}
+    </select>
+
+    <select id="getOverviewStats" resultType="com.Aura.entity.OrderStats">
+        SELECT
+            COUNT(id) AS total_orders,
+            IFNULL(SUM(total_amount), 0) AS total_revenue,
+            SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END) AS cancel_count,
+            SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END) AS finish_count
+        FROM hotel_order
+    </select>
+
+
+    <select id="selectUserEmailById" resultType="string">
+        SELECT email FROM user WHERE id = #{userId}
+    </select>
+
+    <select id="selectAllOrders" resultType="com.Aura.entity.HotelOrder">
+        SELECT * FROM hotel_order
+        <where>
+            <if test="orderNo != null and orderNo != ''">
+                AND order_no LIKE CONCAT('%', #{orderNo}, '%')
+            </if>
+            <if test="status != null">
+                AND status = #{status}
+            </if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+</mapper>
