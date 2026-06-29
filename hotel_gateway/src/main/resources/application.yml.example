@@ -1,0 +1,69 @@
+server:
+  port: 8080
+
+jwt:
+  secret-key: <your-jwt-secret-key>
+
+springdoc:
+  swagger-ui:
+    urls:
+      - name: 用户服务
+        url: /swagger-user/api-docs
+      - name: 资源服务
+        url: /swagger-resource/api-docs
+      - name: 交易服务
+        url: /swagger-trading/api-docs
+
+spring:
+  application:
+    name: hotel-gateway
+  cloud:
+    nacos:
+      server-addr: 127.0.0.1:8848
+      discovery:
+        service: ${spring.application.name}
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins: "*"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+      routes:
+        - id: user-route
+          uri: lb://hotel-user-service
+          predicates:
+            - Path=/api/user/**
+        - id: resource-route
+          uri: lb://hotel-resource-service
+          predicates:
+            - Path=/api/hotel/**, /api/room/**, /api/staff/**
+
+        - id: trading-route
+          uri: lb://hotel-trading-service
+          predicates:
+            - Path=/api/order/**,/api/ai/**
+
+        - id: swagger-user
+          uri: lb://hotel-user-service
+          predicates:
+            - Path=/swagger-user/**
+          filters:
+            - StripPrefix=1
+
+        - id: swagger-resource
+          uri: lb://hotel-resource-service
+          predicates:
+            - Path=/swagger-resource/**
+          filters:
+            - StripPrefix=1
+
+        - id: swagger-trading
+          uri: lb://hotel-trading-service
+          predicates:
+            - Path=/swagger-trading/**
+          filters:
+            - StripPrefix=1

@@ -1,0 +1,70 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: hotel-user-service
+  cloud:
+    nacos:
+      server-addr: 127.0.0.1:8848
+      discovery:
+        server-addr: ${spring.cloud.nacos.server-addr}
+        service: ${spring.application.name}
+        group: DEFAULT_GROUP
+
+    sentinel:
+      eager: true
+      transport:
+        dashboard: 127.0.0.1:8858
+        client-ip: 127.0.0.1
+        port: 8719
+      web-context-unify: false
+
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      password: <your-redis-password>
+      database: 1
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 100
+          max-idle: 50
+          min-idle: 10
+          max-wait: 1000ms
+
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/hotel_db?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai
+    username: root
+    password: <your-mysql-password>
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+mybatis:
+  mapper-locations: classpath:Mapper/*.xml
+  type-aliases-package: com.Aura.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+logging:
+  level:
+    com.Aura.Mapper: debug
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: alpha
+  packages-to-scan: com.Aura.Controller
+
+jwt:
+  secret-key: <your-jwt-secret-key>
+
+sky:
+  alioss:
+    endpoint: oss-cn-shenzhen.aliyuncs.com
+    access-key-id: <your-aliyun-access-key-id>
+    access-key-secret: <your-aliyun-access-key-secret>
+    bucket-name: <your-oss-bucket-name>
