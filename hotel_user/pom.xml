@@ -62,6 +62,12 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- AOP -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
         <!-- Swagger 接口文档 -->
         <dependency>
             <groupId>org.springdoc</groupId>

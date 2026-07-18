@@ -2,6 +2,7 @@ package com.Aura.Controller;
 
 import com.Aura.Mapper.OrderMapper;
 import com.Aura.utils.AiService;
+import com.Aura.utils.RedisChatMemoryStore;
 import com.Aura.utils.UserContext;
 import com.Aura.common.Result;
 import com.Aura.entity.Hotel;
@@ -14,6 +15,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
+import reactor.core.publisher.Flux;
 
 import java.util.HashMap;
 import java.util.List;
@@ -28,27 +31,55 @@ public class AiController {
     private AiService aiService;
 
     @Autowired
+    private RedisChatMemoryStore redisChatMemoryStore;
+
+    @Autowired
     private OrderMapper orderMapper;
 
     @Autowired
     private ResourceClient resourceClient;
 
-    @Operation(summary = "用户AI")
+    @Operation(summary = "用户AI（流式）")
     @PostMapping("/user/chat")
-    public Result<String> userChat(String question) {
+    public StreamingResponseBody userChat(String question) {
         Long userId = UserContext.getUserId();
         String memoryId = userId != null ? String.valueOf(userId) : "anonymous";
         String userContext = userId != null
-                ? "userId=" + userId + "，已登录"
-                : "未登录，userId=0";
-        String answer = aiService.userChat(memoryId, userContext, question);
-        return Result.success("成功", answer);
+                ? "当前用户：userId=" + userId + "，已登录"
+                : "当前用户：未登录";
+
+        Flux<String> flux = aiService.userChat(memoryId, userContext, question);
+
+        return outputStream -> {
+            flux.subscribe(
+                token -> {
+                    try {
+                        outputStream.write(("data: " + token + "\n\n").getBytes());
+                        outputStream.flush();
+                    } catch (Exception ignored) {}
+                },
+                error -> {
+                    try {
+                        outputStream.write(("data: [ERROR] " + error.getMessage() + "\n\n").getBytes());
+                        outputStream.flush();
+                        outputStream.close();
+                    } catch (Exception ignored) {}
+                },
+                () -> {
+                    try {
+                        outputStream.write("data: [DONE]\n\n".getBytes());
+                        outputStream.flush();
+                        outputStream.close();
+                    } catch (Exception ignored) {}
+                }
+            );
+            try { Thread.sleep(120000); } catch (InterruptedException ignored) {}
+        };
     }
 
-    @Operation(summary = "管理AI")
+    @Operation(summary = "管理AI（流式）")
     @PostMapping("/admin/chat")
-    public Result<String> adminChat(String question) {
-        // 查订单统计
+    public StreamingResponseBody adminChat(String question) {
         OrderStats stats = orderMapper.getOverviewStats();
         StringBuilder sb = new StringBuilder();
         if (stats != null) {
@@ -60,14 +91,11 @@ public class AiController {
             sb.append("暂无订单数据");
         }
 
-        // 查酒店和房间数据
         try {
             Result<List<Hotel>> hotelResult = resourceClient.getHotelList(null, null);
             if (hotelResult != null && hotelResult.getCode() == 200 && hotelResult.getData() != null) {
                 List<Hotel> hotels = hotelResult.getData();
                 sb.append("\n共 ").append(hotels.size()).append(" 家酒店");
-
-                // 统计每个城市多少家酒店
                 Map<String, Integer> cityCount = new HashMap<>();
                 for (Hotel h : hotels) {
                     String c = h.getCity();
@@ -78,8 +106,6 @@ public class AiController {
                     sb.append(e.getKey()).append(e.getValue()).append("家、");
                 }
                 sb.deleteCharAt(sb.length() - 1);
-
-                // 统计总房间数
                 long totalRooms = 0;
                 for (Hotel h : hotels) {
                     Result<List<Room>> roomResult = resourceClient.getRoomList(h.getId(), null);
@@ -97,7 +123,33 @@ public class AiController {
 
         Long adminId = UserContext.getUserId();
         String adminMemoryId = adminId != null ? "admin-" + adminId : "admin-anonymous";
-        String answer = aiService.adminChat(adminMemoryId, sb.toString(), question);
-        return Result.success("成功", answer);
+
+        Flux<String> flux = aiService.adminChat(adminMemoryId, sb.toString(), question);
+
+        return outputStream -> {
+            flux.subscribe(
+                token -> {
+                    try {
+                        outputStream.write(("data: " + token + "\n\n").getBytes());
+                        outputStream.flush();
+                    } catch (Exception ignored) {}
+                },
+                error -> {
+                    try {
+                        outputStream.write(("data: [ERROR] " + error.getMessage() + "\n\n").getBytes());
+                        outputStream.flush();
+                        outputStream.close();
+                    } catch (Exception ignored) {}
+                },
+                () -> {
+                    try {
+                        outputStream.write("data: [DONE]\n\n".getBytes());
+                        outputStream.flush();
+                        outputStream.close();
+                    } catch (Exception ignored) {}
+                }
+            );
+            try { Thread.sleep(120000); } catch (InterruptedException ignored) {}
+        };
     }
 }
