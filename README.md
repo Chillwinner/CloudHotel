@@ -1,8 +1,8 @@
-# Aura 酒店管理系统（微服务版）
+# CloudHotel 酒店管理系统（微服务版）
 
 基于 **Spring Cloud Alibaba** 微服务架构的酒店管理系统，实现从用户注册登录、酒店/房间浏览、在线预订、订单管理到 **AI 智能客服 + RAG 知识库问答** 的完整业务闭环。
 
-> 仓库：https://github.com/Chillwinner/Aura
+> 仓库：https://github.com/Chillwinner/CloudHotel
 
 ## 目录
 
@@ -250,8 +250,8 @@ sequenceDiagram
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/Chillwinner/Aura.git
-cd Aura
+git clone https://github.com/Chillwinner/CloudHotel.git
+cd CloudHotel
 ```
 
 ### 2. 配置环境
