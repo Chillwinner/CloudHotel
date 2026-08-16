@@ -1,262 +1,103 @@
 # CloudHotel 酒店管理系统（微服务版）
 
-基于 **Spring Cloud Alibaba** 微服务架构的酒店管理系统，实现从用户注册登录、酒店/房间浏览、在线预订、订单管理到 **AI 智能客服 + RAG 知识库问答** 的完整业务闭环。
+基于 **Spring Cloud Alibaba** 微服务架构的一站式酒店管理平台，覆盖用户注册登录、酒店/房间浏览、在线下单预订、订单管理，以及基于 **LangChain4j + 通义千问** 的 AI 智能客服（Function Calling + RAG + 流式输出）。集成 Nacos 注册发现、Gateway 统一网关、Sentinel 限流熔断、Seata 分布式事务、RabbitMQ 异步通知、Redis 缓存与向量检索等主流中间件，是一套完整的 `Spring Cloud 全家桶 + AI 大模型` 微服务实战项目。
 
 > 仓库：https://github.com/Chillwinner/CloudHotel
 
+---
+
 ## 目录
 
-- [系统架构](#系统架构)
-- [核心功能](#核心功能)
-- [技术栈](#技术栈)
-- [模块说明](#模块说明)
-- [简历八股文重点](#简历八股文重点)
-- [快速开始](#快速开始)
-- [常见问题](#常见问题)
+1. [项目简介](#一项目简介)
+2. [快速部署](#二快速部署)
+3. [系统详细介绍](#三系统详细介绍与架构图)
+4. [项目优化与八股文沉淀](#四项目性能优化与八股文沉淀)
 
-## 系统架构
+---
 
-```mermaid
-graph TB
-    Client[客户端 Web / App] -->|HTTP :8080| GW[网关服务 hotel-gateway<br/>Spring Cloud Gateway WebFlux]
-    GW -->|lb://hotel-user-service| US[用户服务 hotel-user :8081<br/>注册登录 · JWT · OSS]
-    GW -->|lb://hotel-resource-service| RS[资源服务 hotel-resource :8082<br/>酒店 · 房间 · 员工 · 缓存]
-    GW -->|lb://hotel-trading-service| TS[交易服务 hotel-trading :8083<br/>订单 · MQ · AI 客服]
+## 一、项目简介
 
-    TS -->|OpenFeign 远程调用| RS
+### 1.1 技术亮点一览
 
-    subgraph 基础设施
-        NACOS[(Nacos 注册中心 :8848)]
-        MYSQL[(MySQL :3306 hotel_db)]
-        REDIS[(Redis :6379 缓存 / 向量库)]
-        MQ[RabbitMQ :5672]
-        ES[(Elasticsearch :9200 日志)]
-        SENTINEL[Sentinel Dashboard :8858]
-        OSS[阿里云 OSS 对象存储]
-        AI[通义千问 DashScope 兼容 OpenAI]
-    end
+| 亮点 | 技术方案 |
+|------|----------|
+| 微服务架构 | Spring Cloud Alibaba 全栈：Nacos + Gateway + Feign + LoadBalancer + Sentinel + Seata |
+| 高性能缓存 | Redis 逻辑过期 + 随机偏移 + Redisson 读写锁，解决缓存穿透 / 击穿 / 雪崩 |
+| 分布式事务 | Seata AT 模式（`@GlobalTransactional`），保证下单跨服务一致性 |
+| 异步通知 | RabbitMQ 解耦下单链路，消费端异步发送 QQ 邮箱通知 |
+| AI 客服 | LangChain4j + 通义千问：Function Calling 工具调用、BGE 本地向量 RAG、SSE 流式输出、Redis 对话记忆 |
+| 可观测性 | AOP 切面采集接口错误日志，异步批量写入 Elasticsearch |
 
-    GW --- NACOS
-    US --- NACOS
-    RS --- NACOS
-    TS --- NACOS
-
-    US --> MYSQL
-    US --> REDIS
-    US --> OSS
-    US --> ES
-
-    RS --> MYSQL
-    RS --> REDIS
-    RS --> SENTINEL
-    RS --> ES
-
-    TS --> MYSQL
-    TS --> REDIS
-    TS --> MQ
-    TS --> AI
-    TS --> ES
-    MQ --> MAIL[QQ 邮箱 SMTP 通知]
-```
-
-### 核心业务链路：下单预订（分布式事务 + 异步通知）
-
-```mermaid
-sequenceDiagram
-    participant C as 客户端
-    participant GW as 网关 :8080
-    participant TS as 交易服务 :8083
-    participant RS as 资源服务 :8082
-    participant DB as MySQL
-    participant MQ as RabbitMQ
-    participant MAIL as 邮件服务
-
-    C->>GW: POST /api/order/submit
-    GW->>TS: 路由转发 + JWT 全局鉴权
-    TS->>RS: OpenFeign 查空房 (findAvailable)
-    RS-->>TS: 可用房间信息
-    TS->>DB: 插入订单 @GlobalTransactional
-    TS->>RS: 锁定房间状态 (Feign)
-    TS->>MQ: 发送订单通知消息
-    MQ->>MAIL: 异步消费，发送邮件
-    TS-->>C: 返回预订成功
-```
-
-### AI 客服链路：Function Calling + RAG + 流式输出
-
-```mermaid
-sequenceDiagram
-    participant U as 用户
-    participant TS as 交易服务 :8083
-    participant LW as LangChain4j AI Service
-    participant RS as 资源服务 :8082
-    participant V as Redis 向量库
-    participant Q as 通义千问
-
-    U->>TS: POST /api/ai/user/chat (SSE 流式)
-    TS->>LW: AiService.userChat(memoryId, question)
-    LW->>Q: 用户消息 + 可用工具列表
-    Q-->>LW: 需要查询酒店 → 触发 Tool 调用
-    LW->>RS: UserAiTools → OpenFeign 查酒店/空房
-    RS-->>LW: 返回数据注入上下文
-    LW->>V: RAG 检索知识库 (bge-small 向量)
-    V-->>LW: 相关文档片段
-    LW->>Q: 重新生成回答
-    Q-->>U: SSE 流式返回（含订单/房型实时数据）
-```
-
-## 核心功能
+### 1.2 核心功能
 
 | 模块 | 功能 |
 |------|------|
-| **用户服务** | 注册、登录、JWT 签发、用户管理（封禁/解封）、阿里云 OSS 头像上传、Redis 缓存 |
+| **用户服务** | 用户注册、登录（JWT）、阿里云 OSS 头像上传、用户信息管理 |
 | **资源服务** | 酒店 / 房间 / 员工管理、空房查询、房间状态锁定与释放、Redis 缓存 + Redisson 锁 |
-| **交易服务** | 下单（Seata 分布式事务）、订单查询与统计、RabbitMQ 异步邮件通知、AI 智能客服（工具调用 + RAG + 流式） |
-| **网关服务** | 统一入口、动态路由（lb://）、JWT 全局过滤器鉴权、跨域配置、Swagger 聚合 |
+| **交易服务** | 下单（Seata 分布式事务）、订单查询与统计、RabbitMQ 邮件通知、AI 智能客服（工具调用 + RAG + 流式） |
+| **网关服务** | 统一入口、`lb://` 动态路由、JWT 全局过滤器、跨域 CORS、Swagger 服务聚合 |
 
-## 技术栈
+### 1.3 服务模块总览
 
-### 核心框架
-
-| 组件 | 版本 | 用途 |
-|------|------|------|
-| Java | 21 (LTS) | 开发语言 |
-| Spring Boot | 3.5.0 | 基础框架 |
-| Spring Cloud | 2025.0.0 | 微服务治理 |
-| Spring Cloud Alibaba | 2025.0.0.0 | 阿里巴巴微服务组件 |
-| Maven | 3.8+ | 多模块构建（父 POM 统一版本管理） |
-
-### 微服务组件
-
-| 组件 | 用途 | 简历关键词 |
-|------|------|-----------|
-| **Nacos** | 服务注册与发现 | AP/CP 模式切换、心跳机制、临时/持久实例、健康检查 |
-| **Gateway (WebFlux)** | API 网关 | 路由谓词、GlobalFilter 过滤器链、JWT 鉴权、lb:// 负载均衡、跨域 CORS、Swagger 聚合 |
-| **Sentinel 1.8.6** | 流量控制 / 熔断降级 | 滑动窗口、Dashboard 监控（8858）、客户端接入 |
-| **OpenFeign** | 声明式远程调用 | 接口定义远程 API、与 LoadBalancer 集成、服务降级 |
-| **LoadBalancer** | 客户端负载均衡 | 替代 Ribbon，轮询策略、实例选择 |
-| **Seata** | 分布式事务 | `@GlobalTransactional`、AT 模式、undo_log、全局锁 |
-
-### 数据层与中间件
-
-| 组件 | 版本 | 用途 / 简历关键词 |
-|------|------|-------------------|
-| MySQL | 8.x | 业务数据库（JDBC + MyBatis） |
-| MyBatis | 3.0.4 | 半自动 ORM、XML 动态 SQL、驼峰映射 |
-| Redis | 6.0+ | 缓存（逻辑过期 + 空值占位 + 随机过期）、AI 对话记忆、向量检索存储 |
-| Redisson | 3.40.2 | 分布式锁（读写锁 / 看门狗 / 可重入），解决缓存击穿 |
-| RabbitMQ | 3.10+ | 下单异步解耦、`@RabbitListener` 消费、削峰填谷 |
-| Elasticsearch | 7.x | AOP 切面采集接口异常日志，批量 `_bulk` 写入 |
-| 阿里云 OSS | 3.15.1 | 对象存储（头像/图片上传） |
-
-### AI 与大模型（亮点）
-
-| 组件 | 版本 | 用途 |
-|------|------|------|
-| LangChain4j | 1.0.0-beta3 | Java 版 LLM 应用框架 |
-| 通义千问 (DashScope) | qwen-turbo | 对话模型（OpenAI 兼容模式） |
-| Function Calling | — | 自定义 Tool：查酒店/查空房/下单/查订单，模型自动决策调用 |
-| RAG 检索增强 | — | BGE-small 本地嵌入模型 + Redis 向量库 + text-embedding-v3，检索酒店知识库 |
-| 流式输出 | — | Reactor Flux + SSE (StreamingResponseBody) 逐 token 返回 |
-| 对话记忆 | — | Redis 持久化 ChatMemoryStore，24h TTL |
-
-### 其他技术
-
-- **JWT** (jjwt 0.9.1) - 无状态认证，网关全局过滤器校验 + ThreadLocal 用户上下文
-- **MD5** (spring-security-crypto) - 密码加密
-- **AOP** - 接口日志切面、异步批量写 ES
-- **springdoc-openapi 2.3.0** - Swagger UI 接口文档
-- **Lombok** - 简化代码
-- **Reactor / WebFlux** - 响应式流式输出
-
-## 模块说明
-
-| 服务 | 端口 | 说明 |
-|------|------|------|
-| hotel_gateway | 8080 | 网关：路由 / JWT 鉴权 / CORS / Swagger 聚合 |
-| hotel_user | 8081 | 用户：注册登录、JWT、OSS 上传、缓存 |
-| hotel-resource | 8082 | 资源：酒店 / 房间 / 员工 / 空房查询 |
-| hotel-trading | 8083 | 交易：订单、Seata、RabbitMQ、AI 客服 |
-| Nacos | 8848 | 注册中心 |
-| Sentinel Dashboard | 8858 | 流控监控 |
+| 服务 | 端口 | 注册名 | 职责 |
+|------|------|--------|------|
+| hotel_gateway | 8080 | hotel-gateway | 统一入口：路由转发、JWT 鉴权、CORS、Swagger 聚合 |
+| hotel_user | 8081 | hotel-user-service | 用户注册登录、OSS 上传、用户缓存 |
+| hotel-resource | 8082 | hotel-resource-service | 酒店 / 房间 / 员工业务，供交易服务远程调用 |
+| hotel-trading | 8083 | hotel-trading-service | 订单、Seata 事务、RabbitMQ 通知、AI 客服 |
 
 > 根目录 `src/` 为早期单体版本（`com.aura.hotel`），微服务版为 `hotel_*` 四个模块。
 
-## 简历八股文重点
+---
 
-### 1. 微服务架构
+## 二、快速部署
 
-- **服务拆分**：按业务域拆分为用户 / 资源 / 交易 / 网关四服务，单一职责、高内聚低耦合
-- **服务注册发现**：Nacos，临时实例心跳续约、服务端摘除，AP（可用性优先）/ CP 模式差异
-- **服务间通信**：OpenFeign 声明式调用 vs RestTemplate，LoadBalancer 负载均衡
-- **网关统一入口**：Spring Cloud Gateway（WebFlux 非阻塞）、路由谓词 Path 匹配、GlobalFilter 实现 JWT 鉴权、限流可扩展
-- **服务容错**：Sentinel 限流 / 熔断 / 降级，与 Hystrix 对比，滑动窗口算法
+### 2.1 环境要求
 
-### 2. 分布式事务（Seata）
+| 组件 | 说明 | 是否必需 |
+|------|------|----------|
+| JDK 21+ | Java LTS 版本 | 必需 |
+| Maven 3.8+ | 多模块构建 | 必需 |
+| MySQL 8.x | 业务数据库 `hotel_db`（端口 3306） | 必需 |
+| Redis 6+ | 缓存 + 向量库（端口 6379） | 必需 |
+| Nacos 2.2+ | 服务注册中心（端口 8848） | 必需 |
+| RabbitMQ | 交易服务订单通知（端口 5672） | 交易服务必需 |
+| Seata Server | 分布式事务协调器（端口 8091） | 下单事务必需 |
+| Elasticsearch 7.x | 接口错误日志（`es.url`，默认关/可选） | 可选 |
+| Sentinel Dashboard | 流控监控面板（端口 8858） | 可选 |
+| 通义千问 API Key | AI 客服对话模型 | AI 功能必需 |
 
-- **AT 模式原理**：两阶段提交，自动生成 undo_log 回滚日志、全局锁防止脏写
-- **`@GlobalTransactional`**：事务发起方注解，RM 分支注册、TC 全局协调
-- **CAP / BASE**：分布式系统一致性权衡，为什么不能用本地事务
-- **最终一致性方案对比**：Seata AT vs 本地消息表 vs MQ 事务消息
-
-### 3. Redis 缓存（三兄弟实战）
-
-- **缓存穿透**：查询不存在数据 → 空值 "NULL" 占位缓存
-- **缓存击穿**：热点 key 过期瞬间大量请求 → Redisson 读写锁互斥 + **逻辑过期异步刷新**（缓存不设 TTL，逻辑过期后加锁回源刷新）
-- **缓存雪崩**：批量 key 同时失效 → 逻辑过期时间 + **随机 1~30 分钟偏移**
-- **缓存一致性**：先更新数据库再删缓存、延迟双删
-- **Redisson 分布式锁**：看门狗自动续期、可重入、读写锁
-
-### 4. 消息队列（RabbitMQ）
-
-- **异步解耦**：下单成功 → 发消息 → 邮件服务异步消费，主链路不阻塞
-- **交换机类型**：Direct / Fanout / Topic / Headers
-- **消息可靠性**：生产者 confirm、消费者手动 ack、持久化、死信队列
-- **幂等性**：消息重复消费处理（去重表 / Redis SETNX）
-
-### 5. 安全认证（JWT）
-
-- **无状态认证**：Header.Payload.Signature 三段式，网关统一校验，服务间无 Session
-- **Token 过期与刷新**：双 Token 机制
-- **ThreadLocal 传递用户上下文**：网关解析 → 服务间传递 → 业务取用
-- **密码加密**：MD5（可扩展加盐 / BCrypt）
-
-### 6. AI Agent（新亮点，强烈建议写）
-
-- **Function Calling**：LLM 自主决策调用业务 Tool（查酒店、查空房、下单），工具参数 Schema 定义
-- **RAG 检索增强**：文档切分 → BGE 嵌入向量化 → Redis 向量检索 TopK → 注入上下文，解决 LLM 幻觉
-- **流式输出**：SSE 逐 token 返回，提升用户体验
-- **对话记忆**：Redis 持久化多轮记忆，按用户隔离
-
-### 7. AOP 与日志
-
-- **AOP 切面**：环绕通知采集接口耗时 / 参数 / 状态
-- **异步批量写入 ES**：内存有界队列（500）缓冲 + 定时批量 `_bulk`，失败回队重试，避免阻塞业务线程
-
-## 快速开始
-
-### 环境要求
-
-| 组件 | 版本 | 说明 |
-|------|------|------|
-| JDK | 21+ | Java 21 LTS |
-| Maven | 3.8+ | 构建工具 |
-| MySQL | 8.0+ | 数据库 |
-| Redis | 6.0+ | 缓存 + 向量库 |
-| Nacos | 2.2+ | 注册中心 |
-| RabbitMQ | 3.10+ | 交易服务邮件通知（可选） |
-| Elasticsearch | 7.x | 日志（可选） |
-
-### 1. 克隆项目
+### 2.2 克隆项目
 
 ```bash
 git clone https://github.com/Chillwinner/CloudHotel.git
 cd CloudHotel
 ```
 
-### 2. 配置环境
+### 2.3 启动基础设施
 
-复制各服务的 `.example` 配置并填写实际值（**含密钥的 `application.yml` 已被 .gitignore 忽略，勿提交**）：
+```bash
+# 1. 启动 Nacos（单机模式），控制台 http://localhost:8848/nacos
+sh startup.sh -m standalone
+
+# 2. 启动 Redis
+redis-server
+
+# 3. 启动 RabbitMQ（交易服务异步通知需要）
+rabbitmq-server
+
+# 4. 启动 Seata Server（下单分布式事务需要）
+sh seata-server.sh   # 基于 nacos/file 配置注册
+
+# 5.（可选）启动 Elasticsearch
+# 6.（可选）启动 Sentinel Dashboard
+java -Dserver.port=8858 -Dcsp.sentinel.dashboard.server=localhost:8858 \
+     -jar sentinel-dashboard-1.8.6.jar
+```
+
+### 2.4 配置环境变量（复制配置文件并填写）
+
+每个服务的 `application.yml` 均含有真实密钥（已被 `.gitignore` 忽略，请勿提交），部署时先复制其 `.example` 模板再填空：
 
 ```bash
 cp hotel_user/src/main/resources/application.yml.example      hotel_user/src/main/resources/application.yml
@@ -265,68 +106,230 @@ cp hotel-trading/src/main/resources/application.yml.example  hotel-trading/src/m
 cp hotel_gateway/src/main/resources/application.yml.example  hotel_gateway/src/main/resources/application.yml
 ```
 
-需要修改的配置项：
+需要填写的配置项：
 
 | 配置项 | 说明 |
 |--------|------|
 | `spring.datasource.password` | MySQL 密码 |
 | `spring.data.redis.password` | Redis 密码 |
-| `jwt.secret-key` | JWT 密钥（四个服务需一致） |
-| `sky.alioss.access-key-id / secret` | 阿里云 AccessKey |
+| `jwt.secret-key` | JWT 加密密钥（**四个服务必须保持相同**） |
+| `sky.alioss.access-key-id / access-key-secret / bucket-name` | 阿里云 OSS 凭据（用户 / 资源服务） |
 | `ai.qwen.api-key` | 通义千问 API Key（交易服务） |
-| `spring.mail.username / password` | QQ 邮箱 SMTP 授权码 |
+| `spring.mail.username / password` | QQ 邮箱 + SMTP 授权码（交易服务） |
+| `spring.rabbitmq.password` | RabbitMQ 密码（交易服务） |
 
-### 3. 初始化数据库
+### 2.5 初始化数据库
 
-执行 `sql/` 下的脚本创建表结构（业务表 + 向量检索表）。
+创建数据库（各服务内置 `DataSource` 指向 `hotel_db`）：
 
-### 4. 启动基础服务
-
-```bash
-# Nacos（单机）
-sh startup.sh -m standalone
-# Redis
-redis-server
-# RabbitMQ / ES（可选）
-rabbitmq-server
+```sql
+CREATE DATABASE hotel_db DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-### 5. 编译与启动
+> 说明：本仓库未附业务表 DDL 脚本，请根据 `com.Aura.entity` 下的实体（User / Hotel / Room / Staff / HotelOrder）自行建表；`sql/pgvector_schema.sql` 为可选的向量检索表脚本（本版 RAG 使用 Redis 向量库，该脚本仅供 PostgreSQL 方案参考）。
+
+### 2.6 编译与启动
+
+按依赖顺序依次启动（必须保证 Nacos、MySQL、Redis 已就绪）：
 
 ```bash
+# 1. 全量编译（跳过测试）
 mvn clean install -DskipTests
 
-cd hotel_user && mvn spring-boot:run     # 8081
-cd hotel-resource && mvn spring-boot:run # 8082
-cd hotel-trading && mvn spring-boot:run  # 8083
-cd hotel_gateway && mvn spring-boot:run  # 8080（最后启动）
+# 2. 按顺序启动各服务
+cd hotel_user       && mvn spring-boot:run   # 8081
+cd hotel-resource   && mvn spring-boot:run   # 8082
+cd hotel-trading    && mvn spring-boot:run   # 8083
+cd hotel_gateway    && mvn spring-boot:run   # 8080（最后启动）
 ```
 
-### 6. 验证
+### 2.7 验证部署
 
 ```bash
-http://localhost:8080/swagger-ui.html  # 网关聚合文档
-http://localhost:8848/nacos            # 注册中心（应看到 4 个服务）
-http://localhost:8858                  # Sentinel Dashboard
+http://localhost:8080/swagger-ui.html    # 网关聚合三个服务的接口文档
+http://localhost:8848/nacos              # 注册中心应能看到 4 个服务实例
+http://localhost:8858                    # （可选）Sentinel 控制台
 ```
 
-## 常见问题
+启动交易服务时，`AiConfig` 会加载 `rag-docs/` 目录下的酒店知识库文档并写入 Redis 向量库，首次观察日志确认成功即可开始 AI 问答。
 
-### Q: 启动报错 `Connection refused`
-检查 MySQL、Redis、Nacos 是否已启动，配置是否正确。
+---
 
-### Q: OpenFeign 调用失败
-确保目标服务已注册到 Nacos，且 `@EnableFeignClients` 注解已添加。
+## 三、系统详细介绍与架构图
 
-### Q: Seata 分布式事务不生效
-检查 `@GlobalTransactional` 是否在事务发起方，且 `undo_log` 表已创建、Seata Server（8091）已启动。
+### 3.1 系统总体架构
 
-### Q: Sentinel 限流不生效
-确认 Dashboard 已启动，且服务已正确连接（检查 `csp.sentinel.dashboard` 配置）。
+```mermaid
+graph TB
+    Client[客户端 Web / App] -->|HTTP :8080| GW[网关服务 hotel-gateway<br/>JWT 全局过滤器 · 路由转发 · CORS · Swagger 聚合]
 
-### Q: AI 客服无法调用工具
-检查通义千问 API Key 是否有效，以及交易服务能否通过 Feign 访问资源服务。
+    GW -->|lb://hotel-user-service| US[用户服务 hotel-user :8081<br/>注册登录 · JWT 签发 · OSS 上传]
+    GW -->|lb://hotel-resource-service| RS[资源服务 hotel-resource :8082<br/>酒店 · 房间 · 员工 · 缓存]
+    GW -->|lb://hotel-trading-service| TS[交易服务 hotel-trading :8083<br/>订单 · Seata · MQ · AI 客服]
+
+    TS -->|OpenFeign 远程调用| RS
+
+    subgraph 基础设施与中间件
+        NACOS[(Nacos 注册中心 :8848)]
+        MYSQL[(MySQL :3306 hotel_db)]
+        REDIS[(Redis :6379 缓存 / 向量库)]
+        MQ[(RabbitMQ :5672)]
+        SEATA[(Seata Server :8091)]
+        ES[(Elasticsearch :9200 错误日志)]
+        OSS[(阿里云 OSS 头像/图片)]
+        SENTINEL[(Sentinel Dashboard :8858)]
+    end
+
+    US --- NACOS
+    RS --- NACOS
+    TS --- NACOS
+    GW --- NACOS
+
+    US --> MYSQL
+    US --> REDIS
+    US --> OSS
+
+    RS --> MYSQL
+    RS --> REDIS
+    RS --> SENTINEL
+
+    TS --> MYSQL
+    TS --> REDIS
+    TS --> MQ
+    TS --> SEATA
+    TS --> ES
+```
+
+### 3.2 分层说明
+
+所有微服务遵循统一代码规范：`Controller`（接口层）→ `Service`（业务层）→ `Mapper`（数据层，XML 位于 `resources/Mapper/`），公共返回体 `common/Result<T>` 与 `common/PageResult<T>`，实体使用 Lombok `@Data` 简化，用户上下文通过网关传递 + `utils/UserContext`（ThreadLocal）获取。
+
+### 3.3 下单业务链路（分布式事务 + 异步通知）
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as 客户端
+    participant GW as 网关 :8080
+    participant TS as 交易服务 :8083
+    participant RS as 资源服务 :8082
+    participant DB as MySQL hotel_db
+    participant MQ as RabbitMQ
+    participant MAIL as QQ 邮箱 SMTP
+
+    C->>GW: POST /api/order/submit（携带 JWT）
+    GW->>GW: AuthGlobalFilter 解析 token → 注入 userId 头
+    GW->>TS: 路由转发 /api/order/**
+
+    TS->>TS: UserContext 获取 userId
+    TS->>RS: Feign 查询可用房 findOneAvailable()
+    RS-->>TS: 返回可用 Room（含单价）
+    TS->>TS: 计算入住天数 × 单价 = totalAmount
+    TS->>DB: 插入订单 @GlobalTransactional
+    TS->>RS: Feign 锁定房间 lockRoomStatus()
+    TS->>MQ: 发送订单通知到 order.sms.queue
+    MQ->>MAIL: 消费端 OrderSmsListener 异步发送邮件
+    TS-->>GW: 返回预订成功（房号 / 金额）
+    GW-->>C: Result 响应
+```
+
+该链路用 `@GlobalTransactional` 包裹整个跨服务写入（本地建单 + 远程锁房），任一步失败都会通过 **undo_log 自动回滚**；邮件通知走 MQ 异步解耦，不阻塞主流程。
+
+### 3.4 AI 智能客服（Function Calling + RAG + 流式）
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant TS as 交易服务 :8083
+    participant AI as LangChain4j AiService
+    participant RS as 资源服务 :8082（Feign）
+    participant V as Redis 向量库
+    participant Q as 通义千问 qwen-turbo
+
+    U->>TS: POST /api/ai/user/chat?question=...（SSE 流式）
+    TS->>AI: userChat(memoryId, userContext, question)
+    AI->>Q: 用户消息 + 可用工具 Schema
+    Q-->>AI: 决策调用"查询空房"工具
+    AI->>RS: UserAiTools → Feign 查询酒店 / 房型 / 空房 / 下单
+    RS-->>AI: 真实业务数据注入上下文
+    AI->>V: RAG 检索酒店知识库（本地 BGE-small 向量）
+    V-->>AI: TopK 相关文档片段（与工具结果融合）
+    AI->>Q: 携带工具结果 + 知识片段重新生成回答
+    Q-->>U: Reactor Flux → SSE 逐 token 流式返回
+    Note over TS,V: Redis 持久化对话记忆（10 轮 / 24h TTL）
+```
+
+**AI 模块实现要点：**
+
+| 子能力 | 实现 |
+|--------|------|
+| 对话模型 | 通义千问 `qwen-turbo`，OpenAI 兼容模式接入 DashScope |
+| Function Calling | `UserAiTools` 注册 7 个工具：搜酒店 / 查详情 / 查房型 / 查空房 / 下单 / 查订单 / 查订单详情 |
+| RAG 检索 | BGE-small-en 本地量化向量模型 + Redis 向量库（`langchain4j-community-redis`），`rag-docs/` 启动时分块入库，检索 TopK=3 |
+| 流式输出 | Reactor `Flux<String>` + `StreamingResponseBody` 以 SSE 逐 token 下发 |
+| 对话记忆 | `RedisChatMemoryStore` 持久化多轮记忆，按 userId 隔离，24h TTL |
+| 管理员分析 | 注入订单统计（营收 / 完成 / 取消）与酒店分布数据，供管理层问询 |
+
+---
+
+## 四、项目性能优化与八股文沉淀
+
+### 4.1 Redis 缓存三兄弟（`utils/CacheService`）
+
+针对缓存经典问题的工程化解法，全部有落地代码：
+
+| 问题 | 方案 | 代码对应 |
+|------|------|----------|
+| **缓存穿透** | 查询结果为空时写入 `"NULL"` 占位符（带 TTL），避免恶意 key 打穿 DB | `set()` 中 `data == null` 分支 |
+| **缓存击穿** | 热点 key 逻辑过期 + Redisson **读写锁**互斥，仅单线程回源刷新 | `needRefresh()` + `getLock()` 写锁 |
+| **缓存雪崩** | 物理 TTL 之上再叠加 **1~30 分钟随机偏移**，避免批量 key 同时失效 | `random.nextInt(30) * 60 * 1000` |
+| **缓存一致性** | 先更 DB 后删缓存（`del` / `delPattern` 通配清理） | `del()` / `delPattern()` |
+| **分布式锁** | Redisson `ReadWriteLock`：读锁共享、写锁互斥，看门狗自动续期、可重入 | `getLock()` |
+
+> 面试答题公式：**穿透 → 空值缓存 / 布隆过滤器；击穿 → 互斥锁 / 逻辑过期异步刷新；雪崩 → 随机过期 / 多级缓存**，本项目三种问题在同一套 `CacheService` 中均有对应实现。
+
+### 4.2 分布式事务（Seata AT 模式）
+
+- `@GlobalTransactional` 开启全局事务，本地 SQL 通过 **undo_log** 记录回滚日志，二阶段提交保障「建单 + 锁房」跨服务原子性
+- 全局锁避免并发事务对同一房间数据的脏写
+- CAP 权衡：AT 模式牺牲部分强一致，换取业务侵入小 + 最终一致
+
+### 4.3 消息队列（RabbitMQ）
+
+- **异步解耦**：下单链路发消息即返回，`OrderSmsListener` 消费后发送邮件，主流程不等待
+- **可靠性**：`@RabbitListener` 自动声明队列 `order.sms.queue` 并监听
+- 可扩展：生产者确认、手动 ACK、死信队列、幂等（去重表 / Redis SETNX）的落地思路
+
+### 4.4 微服务治理
+
+| 组件 | 应用点 | 八股要点 |
+|------|--------|----------|
+| **Nacos** | 四服务注册发现 | 临时实例心跳、AP/CP 模式、容量保护 |
+| **Gateway** | 统一网关、`lb://` 路由、Swagger 聚合 | 路由谓词、`GlobalFilter` 过滤器链、CORS |
+| **Sentinel** | 资源服务网关依赖、Dashboard 实时监控 | 滑动窗口限流、熔断降级、热点参数 |
+| **OpenFeign** | 交易 → 资源远程调用 | 声明式 API、LoadBalancer 集成、服务降级 |
+| **JWT** | 网关全局鉴权 + ThreadLocal 上下文 | 无状态认证、Header.Payload.Signature、过期刷新 |
+
+### 4.5 AI Agent 落地（求职加分项）
+
+- **Function Calling**：LLM 自主决策调用业务工具，联动真实库存与订单，杜绝"AI 乱编"
+- **RAG 检索增强**：文档分块 → BGE 向量化 → Redis 向量召回 → 上下文注入，从源头减少幻觉
+- **流式交互**：SSE 逐 token 输出，提升对话体感
+- **持久化记忆**：Redis 保存多轮对话，支持按用户隔离与冷启动恢复
+
+### 4.6 AOP 日志与可观测性
+
+- `EsLogAspect` 环绕通知拦截 Controller，采集**错误请求**的方法、参数、耗时与时间戳
+- 有界内存队列（500）缓冲 + 守护线程每 5s **批量 `_bulk`** 写入 ES，失败自动回队重试，避免阻塞业务线程、降低日志 IO 压力
+
+### 4.7 安全性
+
+- 密码 MD5 加密（`spring-security-crypto`），JWT 无状态鉴权
+- 密钥仅存本地 `application.yml`（已被 `.gitignore` 忽略），只提交占位模板 `application.yml.example`，防止真实凭据入库
+
+---
 
 ## License
 
-MIT
+[MIT](LICENSE)
