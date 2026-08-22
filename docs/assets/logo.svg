@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="CloudHotel">
+  <defs>
+    <linearGradient id="ch-face" x1="16" y1="8" x2="118" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3d5a80"/>
+      <stop offset="1" stop-color="#24384f"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="30" fill="url(#ch-face)"/>
+  <path fill="#f3d27a" d="M28 78V56l36-24 36 24v22H88V62H72v16H56V62H40v16H28z"/>
+  <rect x="36" y="82" width="56" height="18" rx="3" fill="#e8eef6"/>
+  <rect x="58" y="88" width="12" height="12" rx="2" fill="#3d5a80"/>
+</svg>

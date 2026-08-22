@@ -1,6 +1,22 @@
-# CloudHotel 酒店管理系统（微服务版）
+<div align="center">
+  <img src="docs/assets/logo.svg" width="112" alt="CloudHotel">
+  <h1>CloudHotel</h1>
+  <p><strong>Spring Cloud Alibaba 酒店管理 + AI 客服</strong></p>
+  <p>四服务微服务：注册登录、酒店房间、在线下单、订单管理，以及 LangChain4j + 通义千问的 Function Calling / RAG / 流式对话。</p>
+  <p>
+    <a href="./README.md">简体中文</a> ·
+    <a href="./README_en.md">English</a>
+  </p>
+  <p>
+    <a href="https://github.com/Chillwinner/CloudHotel/stargazers"><img src="https://img.shields.io/github/stars/Chillwinner/CloudHotel?style=flat-square" alt="Stars"></a>
+    <img src="https://img.shields.io/badge/Java-21-ED8B00?style=flat-square&logo=openjdk&logoColor=white" alt="Java 21">
+    <img src="https://img.shields.io/badge/Spring%20Cloud-Alibaba-6DB33F?style=flat-square&logo=spring&logoColor=white" alt="Spring Cloud">
+    <img src="https://img.shields.io/badge/LangChain4j-Qwen-1BA1E2?style=flat-square" alt="LangChain4j">
+    <img src="https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vuedotjs&logoColor=white" alt="Vue 3">
+  </p>
+</div>
 
-基于 **Spring Cloud Alibaba** 微服务架构的一站式酒店管理平台，覆盖用户注册登录、酒店/房间浏览、在线下单预订、订单管理，以及基于 **LangChain4j + 通义千问** 的 AI 智能客服（Function Calling + RAG + 流式输出）。集成 Nacos 注册发现、Gateway 统一网关、Sentinel 限流熔断、Seata 分布式事务、RabbitMQ 异步通知、Redis 缓存与向量检索等主流中间件，是一套完整的 `Spring Cloud 全家桶 + AI 大模型` 微服务实战项目。
+基于 **Spring Cloud Alibaba** 的一站式酒店管理平台：用户、酒店/房间、下单预订、订单，以及 **LangChain4j + 通义千问** 智能客服（Function Calling + RAG + 流式输出）。中间件包括 Nacos、Gateway、Sentinel、Seata、RabbitMQ、Redis。
 
 > 仓库：https://github.com/Chillwinner/CloudHotel
 
